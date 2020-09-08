@@ -1,0 +1,114 @@
+#### FP MODELS 2019 ########
+############################
+
+#As usual, first let's load our sweet packages!
+library(dplyr)
+library(glmmTMB)
+library(DHARMa)
+library(AICcmodavg)
+library(sjPlot)
+library(MASS)
+
+#Let's load in that sweet, sweet 2019 data.
+#LET'S TRY THIS UPDATED ONE FROM SEPTEMBER
+frog1<- read.csv("frogpool19_v2_reduced_2020-09-03.csv", 
+                 header = T,fileEncoding="UTF-8-BOM") #fromg Andrius
+
+head(frog1)
+
+frog1 <- frog1 %>%
+  mutate(Total_Tads = tp_femo_hahneli + oophagus_tp + tadpoles_tinc)
+
+#Let's make a binomial response, just in case
+
+frog1$Tinc_Y_N <- ifelse(frog1$tadpoles_tinc > 0, 1, 0)
+
+table((frog1$tp_femo_hahneli), frog1$pool_type) 
+
+#First let's start by centering some of our more important variables. 
+#For exmaple, a KH of 0 aren't biologically relevant.
+#Based on graphs from fp_19, I would say pools with 
+#SALINITY should be corrected
+#Hardness = 0 is ok
+#KH = Should be corrected
+#Height is ok
+#leaf litter should be corrected
+
+frog1 <- frog1%>%
+         tidyr::drop_na(salinity, leaflit_vol_ml)%>% 
+         mutate(center_KH = KH - mean(KH),
+                center_salt = salinity - mean(salinity), 
+                center_leaf = leaflit_vol_ml - mean(leaflit_vol_ml), 
+                total_other = oophagus_tp + tp_femo_hahneli, 
+                other_y_n = ifelse (oophagus_tp > 0, 1, 
+                                    ifelse(tp_femo_hahneli > 0, 1, 0)))
+
+#### So, question one, height and frog species. 
+#These data are from singluar pools, sampled only once, so there is no need for a random effect here.
+
+m1<- glm(tadpoles_tinc ~ height + KH + hardness + salinity + leaflit_vol_ml,family = poisson, data = frog1)
+summary(m1)
+
+drop1(m1, test = "Chi") #here we are going to drop hardness, as it is not a meaningful predictor
+testDispersion(m1)
+res <- simulateResiduals(m1, plot = T) # We have issues here!
+#As is, model is overdispersed Poisson GLM, detected overdispersion, 
+#and corrected the standard errors using a quasi-GLM model 
+#where the variance is given by φ × μ, where μ is the mean and φ the dispersion parameter (see model, 8.86).
+
+#NOTE THAT OTHER_Y_N AND OTHER_TOTAL YIELDS PRACTICALLY IDENTICAL MODELS.
+
+#Two very similar models.
+#Here we place KH and Salinity as interactions because they are significantly positively correlated.
+
+m2a<-glm(tadpoles_tinc ~ height + (center_KH*center_salt) + center_leaf + other_y_n + predator_size_sum,
+        family = poisson, data = frog1) #drop predator
+
+m2b<-glm(tadpoles_tinc ~ height + (center_KH*center_salt) + center_leaf + other_y_n,
+         family = poisson, data = frog1) #drop height
+
+drop1(m2b, test = "Chi") #drop hardness
+#Let's go with m2a for now, because I like the use of binary presence of the other tadpoles.
+res <- simulateResiduals(m2b, plot = T) #This model is overdispersed and deviated. Let's correct!
+
+m2c<-glm(tadpoles_tinc ~ (center_KH*center_salt) + center_leaf + other_y_n,
+         family = quasipoisson, data = frog1)  
+
+drop1(m2c, test = "F") 
+
+m2d<-glm(tadpoles_tinc ~ center_leaf + other_y_n + (center_KH*center_salt),
+         family = quasipoisson, data = frog1) #output not affected by predictor structure reshuffling 
+
+drop1(m2d, test = "F")
+
+summary(m2c)
+
+tab_model(m2c, 
+          show.r2 = F, 
+          show.ngroups = F ,
+          show.obs = F,
+          string.ci = "Conf. Int",
+          string.est = "Estimates",
+          transform = NULL,
+          pred.labels = c("(Intercept)", "KH", "Salinity (ppm)",
+                          "Leaf litter (vol/mL)", "Other species (Y/N)", "KH : Salinity"),
+          dv.labels = "Tadpole count")
+
+
+res.d<-m2c$deviance #residual deviance
+null<-m2c$null.deviance #null deviance
+
+(null-res.d)/null * 100 #m1 explains 72 percent of the variation in tinc numbers
+
+
+#no good. doesn't converge.
+#negative binomial----
+m100<- glm.nb(tadpoles_tinc ~ height + KH + hardness + salinity + leaflit_vol_ml,
+         link = "log", data = frog1)
+
+summary(m100, cor = F)
+drop1(m100l, test = "Chi")
+#tinc as a binomial----
+m101<- glm(Tinc_Y_N ~ height + KH + hardness + salinity + leaflit_vol_ml,family = poisson, data = frog1)
+drop1(m101, test = "Chi")
+res <- simulateResiduals(m3, plot = T) 
