@@ -252,3 +252,99 @@ ph<-ggplot(subset(chloe_rain_all, pool_type %in% c("alive", "dead")), aes(x= Wee
   scale_color_manual( values = c("lightgreen", "#e6a81e" ))
 
 grid.arrange(tads, ph)
+
+#############################
+#### FP20 TIMESCALES MODELS ---- ####
+#################################
+
+#let's subset out arboreal data for predicting tinctorius as well.
+#also, let's go ahead and center pH
+pool_2019_terr<- pool_2019 %>%
+  unite("pool_id", PoolID: TreeID, sep = "") %>%
+  tidyr::drop_na(pH)%>%
+  mutate(pool_id = as.factor(pool_id),
+         center_pH = pH - mean(pH)) %>%
+  dplyr::filter(pool_type != "arboreal")
+
+#First, let's look at the effect of pool type + time + (rain?) on pH
+
+m1<- glmmTMB(pH ~ pool_type + Week + Dt_Tadpole_Num + (1| pool_id), family = gaussian, data = pool_2019_terr)
+m1a<- glmmTMB(pH ~ pool_type + Week +(1| pool_id), family = gaussian, data = pool_2019_terr) #Dropped tinc as a predictor
+
+m2<- glmmTMB(pH ~ pool_type * Week + (1| pool_id), family = gaussian, data = pool_2019_terr)
+
+#m2 interaction between pool type and week does not yield significant interaction in predicting pH, so forget about that. 
+drop1(m1a, test = "Chi") 
+res <- simulateResiduals(m1, plot = T) 
+testDispersion(m1)
+summary(m1a)
+tab_model(m1a,
+          show.r2 = F, 
+          show.ngroups = F ,
+          show.stat = "z",
+          show.icc = F, 
+          show.obs = F,
+          string.ci = T,
+          string.est = "Estimates",
+          transform = NULL,
+          pred.labels = c("(Intercept)", 
+                          "Pool type [Dead]",
+                          "Week"))
+
+
+#Second, let's look at the effect of pool type + time + pH on tadpole counts!
+#We only consider terrestrial pools here
+
+m2<- glmmTMB(Dt_Tadpole_Num ~ pool_type + Week + pH+
+               (1| pool_id), family = poisson, data = pool_2019_terr)
+
+m3<- glmmTMB(Dt_Tadpole_Num ~ pool_type + Week + pH +
+               (1| pool_id), family = nbinom1, data = pool_2019_terr)
+
+m4<- glmmTMB(Dt_Tadpole_Num ~ pool_type + Week + pH+
+               (1| pool_id), family = nbinom2, data = pool_2019_terr)
+
+AIC(m2, m3, m4) #best model m4
+drop1(m4, test = "Chi") #drop week 
+
+m4a<- glmmTMB(Dt_Tadpole_Num ~ pool_type + pH+
+               (1| pool_id), family = nbinom2, data = pool_2019_terr)
+
+drop1(m4a, test = "Chi")
+
+res <- simulateResiduals(m4a, plot = T)  # Quantile deviations detected!Big problems, yo.
+res2 = recalculateResiduals(res, group = pool_2019_terr$pool_id) #Uhg. stupid model. 
+plot(res2)
+
+###FIXING MODEL M4 TO NO LONGER HAVE DEVIATION PROBLEMS::::
+
+#Oh! An interaction term does wonders! Interesting!
+m4b<- glmmTMB(Dt_Tadpole_Num ~ pool_type * center_pH + Week +(1| pool_id), family = nbinom2,
+              data = pool_2019_terr)
+
+res <- simulateResiduals(m4b, plot = T) #Finally!
+
+m5<- glmmTMB(Dt_Tadpole_Num ~ pool_type * pH + Week + (1| pool_id), family = nbinom1,
+              data = pool_2019_terr)
+
+m6<- glmmTMB(Dt_Tadpole_Num ~ pool_type * pH + Week +(1| pool_id), family = poisson,
+             data = pool_2019_terr)
+
+AIC(m4b, m5, m6) #Okay, confirming that m4b is the best model
+summary(m4b)
+
+tab_model(m1a, m4b, 
+          show.r2 = F, 
+          show.ngroups = F ,
+          show.stat = T,
+          string.stat = "z",
+          show.icc = F, 
+          show.obs = F,
+          string.ci = "CI",
+          string.est = "Estimates",
+          transform = NULL,
+          pred.labels = c("(Intercept)", 
+                          "Pool type [Dead]",
+                          "Week", "pH", "Pool type [Dead]: pH"), 
+          dv.labels = c("pH", "Tadpole count"))
+
