@@ -41,7 +41,8 @@ frog1 <- frog1%>%
                 center_leaf = leaflit_vol_ml - mean(leaflit_vol_ml), 
                 total_other = oophagus_tp + tp_femo_hahneli, 
                 other_y_n = ifelse (oophagus_tp > 0, 1, 
-                                    ifelse(tp_femo_hahneli > 0, 1, 0)))
+                                    ifelse(tp_femo_hahneli > 0, 1, 0)))%>%
+          mutate(other_y_n = as.factor(other_y_n))
 
 #### So, question one, height and frog species. 
 #These data are from singluar pools, sampled only once, so there is no need for a random effect here.
@@ -93,7 +94,7 @@ tab_model(m2c,
           string.est = "Estimates",
           transform = NULL,
           pred.labels = c("(Intercept)", "KH", "Salinity (ppm)",
-                          "Leaf litter (vol/mL)", "Other species (Y/N)", "KH : Salinity"),
+                          "Leaf litter (vol/mL)", "Other species [Y]", "KH : Salinity"),
           dv.labels = "Tadpole count")
 
 
@@ -102,7 +103,8 @@ null<-m2c$null.deviance #null deviance
 
 (null-res.d)/null * 100 #m1 explains 72 percent of the variation in tinc numbers
 
-
+############################
+#FAILED MODELS----
 #no good. doesn't converge.
 #negative binomial----
 m100<- glm.nb(tadpoles_tinc ~ height + KH + hardness + salinity + leaflit_vol_ml,
