@@ -9,6 +9,8 @@ library(AICcmodavg)
 library(sjPlot)
 library(MASS)
 library(ggplot2)
+library(corrplot)
+library(Hmisc)
 
 #Let's load in that sweet, sweet 2019 data.
 #LET'S TRY THIS UPDATED ONE FROM SEPTEMBER
@@ -46,6 +48,47 @@ frog1 <- frog1%>%
 levels(frog1$other_y_n)
 frog1$other_y_n<- relevel(frog1$other_y_n, "1")
 levels(frog1$other_y_n)
+
+################
+#CORRELATION----
+###############
+#Correlation must be numeric so let's just subset the numeric variables.
+
+numfrog<- frog1 %>%
+  dplyr::select(- pool_type, - date, - pool_id, - tree, 
+                -pH_strip, -Total_Tads, -Tad_Y_N) %>%
+  #There is one row in leaflitter that has an NA that I think is giving the correlation plot
+  #some trouble. So we are going to go ahead and drop that row. 
+  tidyr::drop_na()
+
+#HOW ABOUT FOR TERRESTRIAL POOLS
+numfrog_terr<- numfrog %>%
+               filter(height <= 220)
+
+#Okay, this plot is a little busy, so let's only show significant correlations
+#this is for the entire vertical landscape
+corfrog_sig<- rcorr(as.matrix(numfrog), type = "pearson")
+M <- corfrog_sig$r
+p_mat<-corfrog_sig$P
+
+corrplot(M, type = "upper", order = "alphabet", method = "number",
+         tl.col = "black", tl.srt = 45, number.cex = 0.65, 
+         p.mat= p_mat, sig.level = 0.05, 
+         insig = "blank")
+
+
+#Okay, this plot is a little busy, so let's only show significant correlations
+corfrog_sig1<- rcorr(as.matrix(numfrog_terr), type = "pearson")
+M1 <- corfrog_sig1$r
+p_mat1<-corfrog_sig1$P
+
+corrplot(M1, type = "upper", order = "alphabet", method = "number",
+         tl.col = "black", tl.srt = 45, number.cex = 0.6, 
+         p.mat= p_mat1, sig.level = 0.05, 
+         insig = "blank")
+?rcorr()
+?corrplot ()
+
 #### So, question one, height and frog species. 
 #These data are from singluar pools, sampled only once, so there is no need for a random effect here.
 
@@ -62,6 +105,9 @@ levels(frog1$other_y_n)
 #because of the small sample sizes and huge range in tadpole numbers I thought other y/n would be best.
 #though tincs only end up with them twice in the whole sample. Which is not great. I was thinking to include tinc:y/N
 #but this also ends up fucking up the model because the same data is a response and a predictor.
+
+###################################################
+#let's get modelling!
 
 m1<- glm.nb(tadpoles_tinc~ height + KH + leaflit_vol_ml + predator_size_sum + salinity + 
            other_y_n + water_capacity + hardness + no3 +dens_invert_total + invert_diversity,
