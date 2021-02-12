@@ -22,12 +22,21 @@ library(gt)
 frog1<- read.csv("frogpool19_v2_reduced_2020-09-03.csv", 
                  header = T,fileEncoding="UTF-8-BOM") #fromg Andrius
 
+measure<- read.csv("FP_measures.csv", header = T,fileEncoding="UTF-8-BOM", sep = ",")
+measure<- measure %>%
+          mutate(pool_id = Pool_ID) %>%
+          mutate(s_area = (Length/2*Width/2)*pi, #divide length and width by 2 for radii
+          sa_depth = s_area/Depth) %>%
+          dplyr::select(sa_depth, pool_id)
+  
+frog2<- dplyr::full_join(frog1, measure, by = "pool_id") #now has sa_depth ratio
+
 ################
 #Tidy Data----
 ###############
 #Correlation must be numeric so let's just subset the numeric variables.
 
-numfrog<- frog1 %>%
+numfrog<- frog2 %>%
   mutate(total_other = oophagus_tp + tp_femo_hahneli,
          other_y_n = ifelse (oophagus_tp > 0, 1, 
                              ifelse(tp_femo_hahneli > 0, 1, 0)),
@@ -45,11 +54,11 @@ numfrog <- numfrog %>%
   tidyr::drop_na()
 
 numfrog1<- numfrog %>%
-  dplyr::select(- pool_type, - date, - pool_id, - tree, 
+  dplyr::select(- pool_type, - date, - pool_id, - tree,
                 -pH_strip, -tadpoles_other, -species, -other_y_n, #remove cat. factors 
-                -presence_by_size, -oophagus_tp, -tp_femo_hahneli, -predator_size_sum)  #remove double counts w/Janne
+                -presence_by_size, -oophagus_tp, -tp_femo_hahneli, -predator_size_sum)  #remove double counts w/Janne, keep sa_depth
 
-
+#remove tinctorius data
 random_frog<- numfrog1 %>%
   dplyr::select(-tinc_Y_N, -tadpoles_tinc) %>%#remove response variable here
   rename("Height" = height,
@@ -61,10 +70,8 @@ random_frog<- numfrog1 %>%
          "Invert_Div"= invert_diversity,
          "Invert_Dens" = dens_invert_total,
          "Pred_count" = predator_count,
-          "Amphib_Div"= amphib_diversity,
+         "Amphib_Div"= amphib_diversity,
          "Total_Other" = total_other) 
-
-
 
 
 ##################
@@ -72,81 +79,23 @@ random_frog<- numfrog1 %>%
 ################
 #should all my variables be here? 
 #slightly doctored.
-pca<- prcomp(numfrog1[,-c(15, 18)], scale = T, center = T) #remove all tinctorius data
+pca<- prcomp(numfrog1[,-c(12, 15)], scale = T, center = T) #remove all tinctorius data
 summary(pca)
+
+?prcomp
+
+sdev<- pca$sdev
+se<- sdev/sqrt(14) #getting the standard error of each component. Divide standard deviation by the squart(trait number)
+
 #dissect the PCA for indexing
 loadings<- pca$rotation #correlation or anticorrelation, columns are eigenvectors
 loadings
 loadings1<-loadings[, 1:3] #only take the loadings of the first three vectors
 loadings1<-as_tibble(loadings1)
-
-#get eigenvalues for the first 3 pca's
-all_vals<-eigenvals(pca)
-vals3 <- eigenvals(pca)[1:3]
-vals3
+loadings1
 
 
-?eigenvals()
 
-sum((all_vals - 1)^2) #is this right?
-
-phi_obs<- sqrt((sum(all_vals)) - 13)/(13 * (13-1)) #apparently phi
-
-######## ######## ######## ########
-# Let's make a loadings table!----
-######## ######## ######## ########
-loadings2<- loadings1
-loadings2$Variable<- c("height", "water_capacity", "leaflit", "KH",
-                       "Hardness", "no3", "salinity", "invert_div",
-                       "dens_invert_tot", "pred_count", "pred_size_sum",
-                       "amphib_div", "femo", "oophagus", "presence_by_size", 
-                       "total_other")
-
-#so here there are 67 samples that meet all of the criteria, so let's get the standard error of the 
-#first three components because Bkörklund memntions it's good to have. 
-
-1.9085/sqrt(67) #0.233, PC1
-1.4695/sqrt(67) #0.179528, PC2
-1.2799/sqrt(67) #0.1563, PC3
-
-col_order <- c("Variable", "PC1", "PC2", "PC3")
-loadings2 <- loadings2[, col_order]
-loadings2<- as_tibble(loadings2)
-
-loadings2 %>%
-  gt()%>%
-  cols_label(
-    Variable= md("**Variable**"),
-    PC1 = md("**PC1**"),
-    PC2= md("**PC2**"),
-    PC3= md("**PC3**")) %>%
-  tab_style(
-    style = list(
-      cell_fill(color = "#DeF7E9"),
-      cell_text(weight = "bold")
-    ),
-    locations = cells_body(
-      columns = vars(PC1), # not needed if coloring all columns
-      rows = c(4, 5, 6, 7, 8, 10, 13)))%>%
-  fmt_number(
-    columns = vars(PC1, PC2, PC3),
-    decimals = 3) %>%
-  tab_style(
-    style = list(
-      cell_fill(color = "#DeF7E9"),
-      cell_text(weight = "bold")
-    ),
-    locations = cells_body(
-      columns = vars(PC2), 
-      rows = c(1, 2, 3, 11)))%>%
-  tab_style(
-    style = list(
-      cell_fill(color = "#DeF7E9"),
-      cell_text(weight = "bold")
-    ),
-    locations = cells_body(
-      columns = vars(PC3), 
-      rows = c(9, 12, 14, 15, 16)))
 
                 ######## ######## ######## ########
                           # PCA MODELS ----
@@ -167,6 +116,7 @@ dat
 ########
 #----modelling
 #########
+#First tinc count
 m1<-glm(tadpoles_tinc ~ PC1 + PC2 + PC3, data = dat, family = "poisson") #for tinc count
 m2<-glm.nb(tadpoles_tinc ~ PC1 + PC2 + PC3, data = dat)
 
@@ -197,6 +147,7 @@ summary(m2)
 
 
 #for binomial y/n
+?glm.nb()
 m10<-glm(tinc_Y_N ~ PC1 + PC2 + PC3, data = dat, family = "binomial") #for tinc yn
 m11<-glm.nb(tinc_Y_N ~ PC1 + PC2 + PC3, data = dat)
 
@@ -284,7 +235,7 @@ ggplot(subset(dat2, PC %in% c("PC1")), aes(y = tinc_Y_N,  x = PC_Val))+
   
   
                             #################### ########### ##########
-                                  ### PCA COMPONENT ANALYSIS ####
+                                  ### PCA COMPONENT ANALYSIS---- ####
                           #################### ########### ##########
 
 ######################## ########### ###########
@@ -329,7 +280,7 @@ p_value_correction_method = "BH"
 #holm, bonferroni, hochberg, hommel, BY all attempted. 
 number_randomizations = 1000
 #number of traits
-p = 13
+p = 14 #changed with sa:depth ratio, now 14 traits
 
 ##############################################################################
 
@@ -361,7 +312,7 @@ psi1 = function (x) {
 }
 
 psi_obs<- psi1(obs_PCA)
-psi_obs #9.06
+psi_obs #10.2
 
 psi1(nulls)
 
@@ -369,7 +320,7 @@ psi_nulls = lapply(nulls,psi1)
 psi_nulls= as.numeric(psi_nulls)
 psi_nulls
 
-mean(psi_nulls > psi_obs)
+mean(psi_nulls > psi_obs) #nulls never overlap with observed
 mean(psi_nulls)
 ##############################################################################
 #phi----
@@ -379,8 +330,8 @@ phi1 = function (x) {
   return(phi)
 }
 
-phi_obs<- phi1(obs_PCA) #0.241
-phi_obs
+phi_obs<- phi1(obs_PCA) 
+phi_obs #0.2368
 
 phi_nulls = lapply(nulls,phi1)
 phi_nulls= as.numeric(phi_nulls)
@@ -399,7 +350,7 @@ pvalues_out = expand.grid(PC = rownames(IL_nulls_array[,,1]), trait = colnames(I
 pvals = c()
 
 IL_mat<- as.matrix(IL_nulls_array)
-sum(I)
+sum(IL_mat)
 
 for (i in 1:nrow(pvalues_out)){
   trait = rownames(IL_nulls_array[,,1])==pvalues_out[i,1]
@@ -425,24 +376,26 @@ pvalues_sig <- pvalues_out %>%
                      PC == "PC1") %>% #PC1 is all thats good for yn
               dplyr::select(-p_values_adj)
 
+pvalues_sig
+pvalues_sig$p<- ifelse(pvalues_sig$p_values< 0.001, "<0.001", pvalues_sig$p_values)
+pvalues_sig$p<- as.factor(pvalues_sig$p)
+pvalues_sig<- pvalues_sig %>% 
+              dplyr::select(-p_values)
+
                         #######################
                         ## PVALUE TABLES ----
-                        #####################
-#gotta deal with these pvalues of less than 0
+
+                    #####################
 pvalues_sig %>%
   gt() %>%
   cols_align(
-    align = "left") %>%
+    align = "right") %>%
   
   cols_label(
     PC= md("**PC**"),
     trait = md("**Trait**"),
-    p_values= md("**P value**")) %>%
+    p= md("**P value**")) %>%
 
-  fmt_number(
-    columns = vars(p_values),
-    decimals = 3) %>%
-   
   tab_style(
     style = list(
       cell_fill(color = "#DeF7E9", alpha = 0.8)),
@@ -464,50 +417,13 @@ pvalues_sig %>%
       columns = vars(PC), # not needed if coloring all columns
       rows = c(5))) #%>%
   
-  tab_style(
-    style = list(
-      cell_fill(color = "#ffb8d2", alpha = 0.4)),
-    locations = cells_body(
-      columns = vars(PC), # not needed if coloring all columns
-      rows = c(10, 11, 12))) 
+  #tab_style(
+    #style = list(
+      #cell_fill(color = "#ffb8d2", alpha = 0.4)),
+    #locations = cells_body(
+      #columns = vars(PC), # not needed if coloring all columns
+      #rows = c(10, 11, 12))) 
 
-
-###
-pvalues_sig %>%
-  gt() %>%
-  cols_align(
-    align = "left") %>%
-  
-  cols_label(
-    PC= md("**PC**"),
-    trait = md("**Trait**"),
-    p_values_adj= md("**P-adj (BH)**")) %>%
-  
-  fmt_number(
-    columns = vars(p_values_adj),
-    decimals = 3) %>%
-  
-  tab_style(
-    style = list(
-      cell_fill(color = "#DeF7E9", alpha = 0.8)),
-    locations = cells_body(
-      columns = vars(PC), # not needed if coloring all columns
-      rows = c(1, 2, 3, 4, 5))) %>%
-  
-  tab_style(
-    style = list(
-      cell_fill(color = "#4fcaf6", alpha = 0.3)),
-    locations = cells_body(
-      columns = vars(PC), # not needed if coloring all columns
-      rows = c(6,7,8, 9, 10))) %>%
-  
-  tab_style(
-    style = list(
-      cell_fill(color = "#f7adff", alpha = 0.2)),
-    locations = cells_body(
-      columns = vars(PC), # not needed if coloring all columns
-      rows = c(11, 12)))
-  
 ##############################################################################
 
 ### PLOTTING PCA ################################################################
@@ -563,7 +479,7 @@ ggplot() +
   annotate("rect", xmin =2.5, xmax = 3.5, ymin = 0, ymax = Inf, fill = "#DeF7E9", alpha = 0.4)+
   annotate("rect", xmin =5.5, xmax = 6.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.3)+
   annotate("rect", xmin =1.5, xmax = 2.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.3)+
-  annotate("rect", xmin =10.5, xmax = 11.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.3)+
+  annotate("rect", xmin =11.5, xmax = 12.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.3)+
   annotate("rect", xmin =4.5, xmax = 5.5, ymin = 0, ymax = Inf, fill = "#7ae2ff", alpha = 0.3)+
   geom_point(data=IL_obs_PC1, aes(x = trait, y= IL_score), color = "darkgreen", shape = 4, size = 4)+
   ylab("Index Loading for PC1")+
@@ -571,10 +487,10 @@ ggplot() +
   theme_bw()+
   theme(text = element_text(size = 14))
 
-a
+
 
 #FOR PC2
-b<- ggplot() +
+ggplot() +
   stat_summary(data= IL_nulls_PC2, fun.data = f, geom="boxplot",aes(y= IL_score,x= Trait))+ #random 95box
   geom_point(data=IL_obs_PC2, aes(x = trait, y= IL_score), color = "darkgreen", shape = 4, size = 3)+
   ylab("Index Loading for PC2")+
@@ -582,7 +498,7 @@ b<- ggplot() +
 b
 
 #FOR PC3
-c<- ggplot() +
+ggplot() +
   stat_summary(data= IL_nulls_PC3, fun.data = f, geom="boxplot",aes(y= IL_score,x= Trait))+ #random 95box
   annotate("rect", xmin =9.5, xmax =10.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.4)+
   annotate("rect", xmin =14.5, xmax =15.5, ymin = 0, ymax = Inf, fill = "#ffb8d2", alpha = 0.4)+
@@ -593,4 +509,7 @@ c<- ggplot() +
 c
 
 grid.arrange(a,b, c)
+
+
+
 
