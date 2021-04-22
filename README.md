@@ -9,9 +9,9 @@ First, let's talk data:
 
 >>(2) Pool_Data is the repeated sampling of ground pools during 2020
 
->>(3) PARARE_Meteo_Janv-Juin2020 is weather data kindly provided by the Nouragues Field Station in French Guiana.
+>>(3) PARARE_Meteo_Janv-Juin2020 is weather data kindly provided by the Nouragues Field Station in French Guiana during the time of our experiments.
 
 Now, let's talk code!
 
 >>DataViz_EcoEvo is are all of the data visulizations (minus the illustrations) in our paper. Enjoy!
->>20mods_EcoEvo are our models for 2020 which focuses on D. tinctorious presence over time
+>>2020mod_EcoEvo are our models for 2020 which focuses on D. tinctorious presence over time
