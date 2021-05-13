@@ -7,7 +7,7 @@ library(glmmTMB)
 library(DHARMa)
 library(sjPlot)
 
-pool_2020 <- read.csv("Pool_Data.csv", header = T, sep= ",") #CHLOE DATA
+pool_2020 <- read.csv("frogpool20_ECOEVO.csv", header = T, sep= ",") #CHLOE DATA
 pool_2020$Year<- 2020
 #then we also need to match up pool types. 
 pool_2020[pool_2020$Type %in% c("Waka_Pool", "Buttress", "Tree_Hole"), "pool_type"] <- "alive"
